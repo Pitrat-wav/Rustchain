@@ -2223,7 +2223,6 @@ def submit_attestation():
 # ============= EPOCH ENDPOINTS =============
 
 @app.route('/epoch', methods=['GET'])
-@require_auth(ADMIN_KEY)
 @rate_limit(api_limiter)
 def get_epoch():
     """Get current epoch info"""
@@ -3194,7 +3193,6 @@ def api_nodes():
 
 
 @app.route("/api/miners", methods=["GET"])
-@require_auth(ADMIN_KEY)
 @rate_limit(api_limiter)
 def api_miners():
     """Return list of attested miners with their PoA details"""
@@ -3771,7 +3769,6 @@ def api_rewards_epoch(epoch: int):
     })
 
 @app.route('/wallet/balance', methods=['GET'])
-@require_auth(ADMIN_KEY)
 @rate_limit(api_limiter)
 def api_wallet_balance():
     """Get balance for a specific miner"""

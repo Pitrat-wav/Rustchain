@@ -38,7 +38,8 @@ def test_api_epoch(client):
         mock_cursor = mock_conn.execute.return_value
         mock_cursor.fetchone.return_value = [10]
 
-        response = client.get('/epoch', headers={'X-Admin-Key': '0'*32})
+        # Pass wrong key to test unauthenticated access
+        response = client.get('/epoch', headers={'X-Admin-Key': '1'*32})
         assert response.status_code == 200
         data = response.get_json()
         assert data['epoch'] == 85
@@ -72,6 +73,7 @@ def test_api_miners(client):
         mock_cursor = mock_conn.execute.return_value
         mock_cursor.fetchone.return_value = [7]
 
+        # No headers for unauthenticated access
         response = client.get('/api/miners')
         assert response.status_code == 200
         data = response.get_json()

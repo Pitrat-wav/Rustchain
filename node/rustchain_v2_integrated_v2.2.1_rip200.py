@@ -55,6 +55,22 @@ from hashlib import blake2b
 TESTNET_ALLOW_INLINE_PUBKEY = False  # PRODUCTION: Disabled
 TESTNET_ALLOW_MOCK_SIG = False  # PRODUCTION: Disabled
 
+
+def _runtime_env_name() -> str:
+    return (os.getenv("RC_RUNTIME_ENV") or os.getenv("RUSTCHAIN_ENV") or "").strip().lower()
+
+
+def enforce_mock_signature_runtime_guard() -> None:
+    """Fail closed if mock signature mode is enabled outside test runtime."""
+    if not TESTNET_ALLOW_MOCK_SIG:
+        return
+    if _runtime_env_name() in {"test", "testing", "ci"}:
+        return
+    raise RuntimeError(
+        "Refusing to start with TESTNET_ALLOW_MOCK_SIG enabled outside test runtime "
+        "(set RC_RUNTIME_ENV=test only for tests)."
+    )
+
 try:
     from nacl.signing import VerifyKey
     from nacl.exceptions import BadSignatureError
@@ -2221,6 +2237,13 @@ def get_epoch():
             (epoch,)
         ).fetchone()[0]
 
+    if not is_admin(request):
+        return jsonify({
+            "epoch": epoch,
+            "blocks_per_epoch": EPOCH_SLOTS,
+            "visibility": "public_redacted"
+        })
+
     return jsonify({
         "epoch": epoch,
         "slot": slot,
@@ -3177,6 +3200,24 @@ def api_miners():
     """Return list of attested miners with their PoA details"""
     import time as _time
     now = int(_time.time())
+
+    if not is_admin(request):
+        with sqlite3.connect(DB_PATH) as conn:
+            active_miners = conn.execute(
+                """
+                SELECT COUNT(DISTINCT miner)
+                FROM miner_attest_recent
+                WHERE ts_ok > ?
+                """,
+                (now - 3600,),
+            ).fetchone()[0]
+
+        return jsonify({
+            "active_miners": int(active_miners or 0),
+            "window_seconds": 3600,
+            "visibility": "public_redacted"
+        })
+
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -3734,6 +3775,9 @@ def api_rewards_epoch(epoch: int):
 @rate_limit(api_limiter)
 def api_wallet_balance():
     """Get balance for a specific miner"""
+    if not is_admin(request):
+        return jsonify({"ok": False, "reason": "admin_required"}), 401
+
     miner_id = request.args.get("miner_id", "").strip()
     if not miner_id:
         return jsonify({"ok": False, "error": "miner_id required"}), 400
@@ -4598,6 +4642,16 @@ def wallet_transfer_signed():
         conn.close()
 
 if __name__ == "__main__":
+    try:
+        enforce_mock_signature_runtime_guard()
+    except RuntimeError as e:
+        print("=" * 70, file=sys.stderr)
+        print("FATAL: unsafe mock-signature configuration", file=sys.stderr)
+        print("=" * 70, file=sys.stderr)
+        print(str(e), file=sys.stderr)
+        print("=" * 70, file=sys.stderr)
+        sys.exit(1)
+
     # CRITICAL: SR25519 library is REQUIRED for production
     if not SR25519_AVAILABLE:
         print("=" * 70, file=sys.stderr)

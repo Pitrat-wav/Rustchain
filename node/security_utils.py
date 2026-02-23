@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 from functools import wraps
 import time
 from flask import request, jsonify
